@@ -12,7 +12,7 @@ from telegram.ext import (
 from app.core.config import settings
 from app.services.ai_engine import analyze_player
 from app.services.ocr_service import extract_text_from_image, parse_pubg_stats
-
+from app.services.card_generator import create_result_card
 
 telegram_app = None
 
