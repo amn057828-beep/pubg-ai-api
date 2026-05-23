@@ -49,51 +49,90 @@ def decode_token(token: str) -> str:
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM]
         )
+
         user_id = payload.get("sub")
 
         if not user_id:
-            raise HTTPException(status_code=401, detail="توكن غير صالح")
+            raise HTTPException(
+                status_code=401,
+                detail="توكن غير صالح"
+            )
 
         return user_id
 
     except JWTError:
-        raise HTTPException(status_code=401, detail="توكن غير صالح")
+        raise HTTPException(
+            status_code=401,
+            detail="توكن غير صالح"
+        )
 
 
 def get_current_user(
-    authorization: str = Header(default="", alias="Authorization"),
+    authorization: str = Header(default=""),
+    Authorization: str = Header(default=""),
     db: Session = Depends(get_db)
 ) -> User:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="يرجى إرسال Authorization Header")
 
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="يرجى إرسال Bearer Token")
+    auth_header = authorization or Authorization
 
-    token = authorization.replace("Bearer ", "").strip()
+    if not auth_header:
+        raise HTTPException(
+            status_code=401,
+            detail="يرجى إرسال Authorization Header"
+        )
+
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="يرجى إرسال Bearer Token"
+        )
+
+    token = auth_header.replace("Bearer ", "").strip()
+
     user_id = decode_token(token)
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user = db.query(User).filter(
+        User.id == int(user_id)
+    ).first()
 
     if not user:
-        raise HTTPException(status_code=401, detail="المستخدم غير موجود")
+        raise HTTPException(
+            status_code=401,
+            detail="المستخدم غير موجود"
+        )
 
     if user.is_banned:
-        raise HTTPException(status_code=403, detail="هذا المستخدم محظور")
+        raise HTTPException(
+            status_code=403,
+            detail="هذا المستخدم محظور"
+        )
 
     return user
 
 
 def get_api_key(
-    x_api_key: str = Header(default="", alias="X-API-Key"),
+    x_api_key: str = Header(default=""),
+    X_API_Key: str = Header(default=""),
     db: Session = Depends(get_db)
 ) -> ApiKey:
+
+    api_key = x_api_key or X_API_Key
+
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="يرجى إرسال API Key"
+        )
+
     key = db.query(ApiKey).filter(
-        ApiKey.key == x_api_key,
+        ApiKey.key == api_key,
         ApiKey.is_active == True
     ).first()
 
     if not key:
-        raise HTTPException(status_code=401, detail="API Key غير صالح")
+        raise HTTPException(
+            status_code=401,
+            detail="API Key غير صالح"
+        )
 
     return key
