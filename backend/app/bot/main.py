@@ -258,17 +258,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan = parts[1] if len(parts) > 1 else "Pro"
         contact = parts[2] if len(parts) > 2 else str(update.effective_user.id)
         note = parts[3] if len(parts) > 3 else ""
+card = create_result_card(result)
 
-        await update.message.reply_text(
-            f"""✅ تم استلام طلب الاشتراك اليدوي
+await update.message.reply_photo(
+    photo=open(card, "rb"),
+    caption=f"""🎮 نتيجة التحليل
 
-💎 الخطة: {plan}
-📞 التواصل: {contact}
-🧾 الملاحظة: {note}
-
-سيقوم المدير بمراجعة الطلب وتفعيل الاشتراك يدويًا.""",
-            reply_markup=main_menu()
-        )
+🏷️ التصنيف: {result['title']}
+⭐ التقييم: {result['score']}/100
+🎖️ الشارة: {result['badge']}"""
+)
         return
 
     if not has_stats(text):
