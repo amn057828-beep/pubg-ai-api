@@ -1,29 +1,69 @@
 import re
-from PIL import Image
 import pytesseract
+from PIL import Image
 
-def extract_text_from_image(image_path: str) -> str:
-    img = Image.open(image_path)
-    return pytesseract.image_to_string(img, lang="eng+ara")
 
-def find_number(patterns, text, default=0.0):
+def extract_text_from_image(path: str):
+    image = Image.open(path)
+
+    text = pytesseract.image_to_string(
+        image,
+        lang="eng"
+    )
+
+    return text
+
+
+def extract_number(text: str, patterns, default=0):
     for pattern in patterns:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
+        match = re.search(pattern, text, re.I)
+
+        if match:
             try:
-                return float(m.group(1).replace("%", ""))
-            except Exception:
-                continue
+                return float(match.group(1))
+            except:
+                pass
+
     return default
 
-def parse_pubg_stats(text: str) -> dict:
+
+def parse_pubg_stats(text: str):
+    kd = extract_number(text, [
+        r"KD[:\s]+(\d+(\.\d+)?)",
+        r"K/D[:\s]+(\d+(\.\d+)?)",
+    ])
+
+    damage = extract_number(text, [
+        r"Damage[:\s]+(\d+)",
+        r"DMG[:\s]+(\d+)",
+    ])
+
+    accuracy = extract_number(text, [
+        r"Accuracy[:\s]+(\d+)",
+        r"ACC[:\s]+(\d+)",
+    ])
+
+    survival = extract_number(text, [
+        r"Survival[:\s]+(\d+)",
+        r"Time[:\s]+(\d+)",
+    ])
+
+    headshots = extract_number(text, [
+        r"Headshots[:\s]+(\d+)",
+        r"HS[:\s]+(\d+)",
+    ])
+
+    win_rate = extract_number(text, [
+        r"WinRate[:\s]+(\d+)",
+        r"WR[:\s]+(\d+)",
+    ])
+
     return {
-        "pubg_id": None,
-        "kd": find_number([r"K/?D\s*[:：]?\s*(\d+(?:\.\d+)?)", r"KD\s*(\d+(?:\.\d+)?)"], text),
-        "damage": find_number([r"Damage\s*[:：]?\s*(\d+(?:\.\d+)?)", r"Avg Damage\s*(\d+(?:\.\d+)?)"], text),
-        "accuracy": find_number([r"Accuracy\s*[:：]?\s*(\d+(?:\.\d+)?)%?", r"Acc\s*(\d+(?:\.\d+)?)%?"], text),
-        "survival_time": find_number([r"Survival\s*Time\s*[:：]?\s*(\d+(?:\.\d+)?)", r"Survival\s*(\d+(?:\.\d+)?)"], text),
-        "headshots": find_number([r"Headshots?\s*[:：]?\s*(\d+(?:\.\d+)?)%?", r"Headshot\s*Rate\s*(\d+(?:\.\d+)?)%?"], text),
-        "win_rate": find_number([r"Win\s*Rate\s*[:：]?\s*(\d+(?:\.\d+)?)%?", r"Wins?\s*(\d+(?:\.\d+)?)%?"], text),
-        "ocr_text": text[:4000],
+        "pubg_id": "Screenshot_Player",
+        "kd": kd,
+        "damage": damage,
+        "accuracy": accuracy,
+        "survival_time": survival,
+        "headshots": headshots,
+        "win_rate": win_rate,
     }
