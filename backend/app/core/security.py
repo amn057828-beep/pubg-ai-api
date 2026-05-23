@@ -1,42 +1,62 @@
-from datetime import datetime, timedelta, timezone
-from jose import jwt, JWTError
+from datetime import datetime, timedelta
+from jose import jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, Header
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
-from app.models.api_key import ApiKey
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ALGORITHM = "HS256"
 
-def hash_password(password: str) -> str:
+# استبدال bcrypt بـ pbkdf2_sha256
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256"],
+    deprecated="auto"
+)
+
+security = HTTPBearer()
+
+def hash_password(password: str):
     return pwd_context.hash(password)
 
-def verify_password(password: str, hashed: str) -> bool:
+def verify_password(password: str, hashed: str):
     return pwd_context.verify(password, hashed)
 
-def create_access_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode({"sub": subject, "exp": expire}, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+def create_access_token(data: dict):
+    payload = data.copy()
+    payload["exp"] = datetime.utcnow() + timedelta(days=7)
 
-def decode_token(token: str) -> str:
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET,
+        algorithm=ALGORITHM
+    )
+
+def decode_access_token(token: str):
+    return jwt.decode(
+        token,
+        settings.JWT_SECRET,
+        algorithms=[ALGORITHM]
+    )
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]).get("sub")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="توكن غير صالح")
+        payload = decode_access_token(credentials.credentials)
 
-def get_current_user(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> User:
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="يرجى إرسال Bearer Token")
-    user_id = decode_token(authorization.replace("Bearer ", ""))
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user or user.is_banned:
-        raise HTTPException(status_code=401, detail="مستخدم غير مصرح")
-    return user
+        user = db.query(User).filter(
+            User.id == payload.get("user_id")
+        ).first()
 
-def get_api_key(x_api_key: str = Header(default=""), db: Session = Depends(get_db)) -> ApiKey:
-    key = db.query(ApiKey).filter(ApiKey.key == x_api_key, ApiKey.is_active == True).first()
-    if not key:
-        raise HTTPException(status_code=401, detail="API Key غير صالح")
-    return key
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        return user
+
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
