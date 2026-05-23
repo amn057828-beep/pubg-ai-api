@@ -2,36 +2,28 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
 from app.models.upgrade_request import UpgradeRequest
-from app.models.user import User
 
 
-router = APIRouter(
-    prefix="/upgrade",
-    tags=["Upgrade"]
-)
+router = APIRouter(prefix="/upgrade", tags=["Upgrade"])
 
 
-@router.post("/request")
-def request_upgrade(
-    body: dict,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
-):
-
+@router.post("/telegram-request")
+def telegram_upgrade_request(body: dict, db: Session = Depends(get_db)):
     row = UpgradeRequest(
-        username=user.username,
-        telegram_id=str(user.telegram_id),
-        requested_plan=body.get("plan", "pro"),
+        telegram_id=str(body.get("telegram_id", "")),
+        username=body.get("username", ""),
+        requested_plan=body.get("plan", "Pro"),
         contact=body.get("contact", ""),
+        payment_note=body.get("note", ""),
         status="pending"
     )
 
     db.add(row)
     db.commit()
+    db.refresh(row)
 
     return {
         "success": True,
-        "message": "تم إرسال طلب الاشتراك"
+        "request_id": row.id
     }
