@@ -66,7 +66,7 @@ function Sidebar({ page, setPage }) {
 function Login({ setToken }) {
   const [login, setLogin] = useState({
     username: "admin",
-    password: "admin123",
+    password: "123456",
   });
 
   async function doLogin() {
@@ -117,6 +117,7 @@ function Home({ stats, refresh }) {
           <h1>📊 لوحة التحكم</h1>
           <p>نظرة عامة على أداء منصة PUBG AI Analyzer</p>
         </div>
+
         <button onClick={refresh}>
           <RefreshCw size={18} /> تحديث
         </button>
@@ -164,19 +165,31 @@ function Home({ stats, refresh }) {
 
 function UsersPage({ users, token, loadUsers }) {
   async function banUser(id) {
-    await fetch(`${API}/admin/users/${id}/ban`, {
+    const r = await fetch(`${API}/admin/users/${id}/ban`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    loadUsers();
+
+    if (r.ok) {
+      await loadUsers();
+      alert("تم حظر المستخدم");
+    } else {
+      alert("فشل الحظر");
+    }
   }
 
   async function setPlan(id, plan) {
-    await fetch(`${API}/admin/users/${id}/plan/${plan}`, {
+    const r = await fetch(`${API}/admin/users/${id}/plan/${plan}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    loadUsers();
+
+    if (r.ok) {
+      await loadUsers();
+      alert(`تم تغيير الخطة إلى ${plan}`);
+    } else {
+      alert("فشل تغيير الخطة");
+    }
   }
 
   return (
@@ -204,7 +217,10 @@ function UsersPage({ users, token, loadUsers }) {
               <button className="small" onClick={() => setPlan(u.id, "pro")}>
                 Pro
               </button>
-              <button className="small" onClick={() => setPlan(u.id, "premium")}>
+              <button
+                className="small"
+                onClick={() => setPlan(u.id, "premium")}
+              >
                 Premium
               </button>
               <button className="small danger" onClick={() => banUser(u.id)}>
@@ -220,19 +236,24 @@ function UsersPage({ users, token, loadUsers }) {
 
 function SubsPage({ requests, token, loadRequests }) {
   async function decide(id, status) {
-    await fetch(`${API}/admin/upgrade-requests/${id}/decision`, {
+    const url =
+      status === "approved"
+        ? `${API}/admin/approve/${id}`
+        : `${API}/admin/reject/${id}`;
+
+    const r = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        status,
-        admin_note: status === "approved" ? "تم التفعيل يدوياً" : "تم الرفض",
-      }),
     });
 
-    loadRequests();
+    if (r.ok) {
+      await loadRequests();
+      alert(status === "approved" ? "تم قبول الاشتراك" : "تم رفض الاشتراك");
+    } else {
+      alert("فشل تنفيذ العملية");
+    }
   }
 
   return (
@@ -251,18 +272,28 @@ function SubsPage({ requests, token, loadRequests }) {
           <span>إجراء</span>
         </div>
 
+        {requests.length === 0 && (
+          <div className="empty">لا توجد طلبات اشتراك حتى الآن</div>
+        )}
+
         {requests.map((r) => (
           <div className="row" key={r.id}>
             <span>{r.id}</span>
             <span>{r.username || r.telegram_id || "-"}</span>
-            <span>{r.requested_plan}</span>
+            <span>{r.requested_plan || r.plan || "-"}</span>
             <span>{r.contact || "-"}</span>
             <span className={r.status}>{r.status}</span>
             <span className="actions">
-              <button className="small ok" onClick={() => decide(r.id, "approved")}>
+              <button
+                className="small ok"
+                onClick={() => decide(r.id, "approved")}
+              >
                 <CheckCircle size={14} /> قبول
               </button>
-              <button className="small danger" onClick={() => decide(r.id, "rejected")}>
+              <button
+                className="small danger"
+                onClick={() => decide(r.id, "rejected")}
+              >
                 <XCircle size={14} /> رفض
               </button>
             </span>
@@ -329,21 +360,30 @@ function App() {
     const r = await fetch(`${API}/admin/stats`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (r.ok) setStats(await r.json());
+
+    if (r.ok) {
+      setStats(await r.json());
+    }
   }
 
   async function loadUsers() {
     const r = await fetch(`${API}/admin/users`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (r.ok) setUsers(await r.json());
+
+    if (r.ok) {
+      setUsers(await r.json());
+    }
   }
 
   async function loadRequests() {
     const r = await fetch(`${API}/admin/upgrade-requests`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (r.ok) setRequests(await r.json());
+
+    if (r.ok) {
+      setRequests(await r.json());
+    }
   }
 
   async function refreshAll() {
@@ -353,10 +393,14 @@ function App() {
   }
 
   useEffect(() => {
-    if (token) refreshAll();
+    if (token) {
+      refreshAll();
+    }
   }, [token]);
 
-  if (!token) return <Login setToken={setToken} />;
+  if (!token) {
+    return <Login setToken={setToken} />;
+  }
 
   return (
     <main className="layout" dir="rtl">
@@ -376,9 +420,11 @@ function App() {
         </div>
 
         {page === "home" && <Home stats={stats} refresh={refreshAll} />}
+
         {page === "users" && (
           <UsersPage users={users} token={token} loadUsers={loadUsers} />
         )}
+
         {page === "subs" && (
           <SubsPage
             requests={requests}
@@ -386,7 +432,9 @@ function App() {
             loadRequests={loadRequests}
           />
         )}
+
         {page === "analytics" && <AnalyticsPage />}
+
         {page === "api" && <ApiPage />}
       </section>
     </main>
