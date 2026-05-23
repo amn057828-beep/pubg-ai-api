@@ -29,10 +29,12 @@ def create_access_token(subject: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
+
     payload = {
         "sub": str(subject),
         "exp": expire
     }
+
     return jwt.encode(
         payload,
         settings.JWT_SECRET,
@@ -47,31 +49,43 @@ def decode_token(token: str) -> str:
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM]
         )
-        return payload.get("sub")
+        user_id = payload.get("sub")
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="توكن غير صالح")
+
+        return user_id
+
     except JWTError:
         raise HTTPException(status_code=401, detail="توكن غير صالح")
 
 
 def get_current_user(
-    authorization: str = Header(default=""),
+    authorization: str = Header(default="", alias="Authorization"),
     db: Session = Depends(get_db)
 ) -> User:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="يرجى إرسال Authorization Header")
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="يرجى إرسال Bearer Token")
 
-    token = authorization.replace("Bearer ", "")
+    token = authorization.replace("Bearer ", "").strip()
     user_id = decode_token(token)
 
     user = db.query(User).filter(User.id == int(user_id)).first()
 
-    if not user or user.is_banned:
-        raise HTTPException(status_code=401, detail="مستخدم غير مصرح")
+    if not user:
+        raise HTTPException(status_code=401, detail="المستخدم غير موجود")
+
+    if user.is_banned:
+        raise HTTPException(status_code=403, detail="هذا المستخدم محظور")
 
     return user
 
 
 def get_api_key(
-    x_api_key: str = Header(default=""),
+    x_api_key: str = Header(default="", alias="X-API-Key"),
     db: Session = Depends(get_db)
 ) -> ApiKey:
     key = db.query(ApiKey).filter(
