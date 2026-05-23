@@ -14,6 +14,7 @@ from app.services.ai_engine import analyze_player
 from app.services.ocr_service import extract_text_from_image, parse_pubg_stats
 from app.services.card_generator import create_result_card
 
+
 telegram_app = None
 
 
@@ -258,16 +259,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan = parts[1] if len(parts) > 1 else "Pro"
         contact = parts[2] if len(parts) > 2 else str(update.effective_user.id)
         note = parts[3] if len(parts) > 3 else ""
-card = create_result_card(result)
 
-await update.message.reply_photo(
-    photo=open(card, "rb"),
-    caption=f"""🎮 نتيجة التحليل
+        await update.message.reply_text(
+            f"""✅ تم استلام طلب الاشتراك اليدوي
 
-🏷️ التصنيف: {result['title']}
-⭐ التقييم: {result['score']}/100
-🎖️ الشارة: {result['badge']}"""
-)
+💎 الخطة: {plan}
+📞 التواصل: {contact}
+🧾 الملاحظة: {note}
+
+سيقوم المدير بمراجعة الطلب وتفعيل الاشتراك يدويًا.""",
+            reply_markup=main_menu()
+        )
         return
 
     if not has_stats(text):
@@ -286,8 +288,11 @@ KD 3.5 Damage 780 Accuracy 28 Survival 18 Headshots 17 WinRate 21""",
     stats = parse_text_stats(text)
     result = analyze_player(stats)
 
-    await update.message.reply_text(
-        f"""🎮 نتيجة التحليل
+    card = create_result_card(result)
+
+    await update.message.reply_photo(
+        photo=open(card, "rb"),
+        caption=f"""🎮 نتيجة التحليل
 
 🏷️ التصنيف: {result['title']}
 ⭐ التقييم: {result['score']}/100
@@ -311,8 +316,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = parse_pubg_stats(text)
     result = analyze_player(stats)
 
-    await update.message.reply_text(
-        f"""📸 تحليل الصورة
+    card = create_result_card(result)
+
+    await update.message.reply_photo(
+        photo=open(card, "rb"),
+        caption=f"""📸 تحليل الصورة
 
 🏷️ التصنيف: {result['title']}
 ⭐ التقييم: {result['score']}/100
