@@ -250,23 +250,35 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             parts = text.split(maxsplit=3)
             plan = parts[1] if len(parts) > 1 else "Pro"
-            contact = parts[2] if len(parts) > 2 else str(update.effective_user.id)
+            contact = parts[2] if len(parts) > 2 else "Unknown"
             note = parts[3] if len(parts) > 3 else ""
 
+            requests.post(
+                f"{settings.API_BASE_URL}/upgrade/telegram-request",
+                json={
+                    "telegram_id": update.effective_user.id,
+                    "username": update.effective_user.username or update.effective_user.first_name,
+                    "plan": plan,
+                    "contact": contact,
+                    "note": note,
+                },
+                timeout=10
+            )
+
             await update.message.reply_text(
-                f"""✅ تم استلام طلب الاشتراك اليدوي
+                f"""✅ تم استلام طلب الاشتراك
 
 💎 الخطة: {plan}
 📞 التواصل: {contact}
-🧾 الملاحظة: {note}
+🧾 الملاحظة: {note or "لا توجد"}
 
-سيقوم المدير بمراجعة الطلب وتفعيل الاشتراك يدويًا.""",
+سيتم مراجعته من الإدارة قريبًا 🔥""",
                 reply_markup=main_menu()
             )
 
-        except Exception:
+        except Exception as e:
             await update.message.reply_text(
-                "❌ حدث خطأ أثناء تسجيل طلب الاشتراك.",
+                f"❌ حدث خطأ أثناء تسجيل طلب الاشتراك:\n{str(e)}",
                 reply_markup=main_menu()
             )
 
