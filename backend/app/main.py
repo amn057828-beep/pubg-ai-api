@@ -1,157 +1,90 @@
-import re
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
+from loguru import logger
+
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 from app.core.config import settings
-from app.services.ai_engine import analyze_player
-from app.services.ocr_service import extract_text_from_image, parse_pubg_stats
+from app.core.database import Base, engine
+from app.api import auth, analysis, admin, leaderboard, upgrade, features
+from app.bot.main import build_telegram_app
+import app.models
 
 
-telegram_app = None
+Base.metadata.create_all(bind=engine)
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"]
+)
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="PUBG Mobile AI Analyzer Arabic SaaS API",
+    version="1.0.0",
+)
+
+app.state.limiter = limiter
+
+app.add_middleware(SlowAPIMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-def parse_text_stats(text: str):
-    def n(pattern):
-        m = re.search(pattern + r"\s*(\d+(?:\.\d+)?)", text, re.I)
-        return float(m.group(1)) if m else 0
+@app.on_event("startup")
+async def startup_event():
+    telegram_app = build_telegram_app()
+    if telegram_app:
+        await telegram_app.initialize()
+        logger.info("Telegram webhook app initialized")
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"{request.method} {request.url.path}")
+    return await call_next(request)
+
+
+@app.get("/")
+def root():
     return {
-        "pubg_id": None,
-        "kd": n("KD"),
-        "damage": n("Damage"),
-        "accuracy": n("Accuracy"),
-        "survival_time": n("Survival"),
-        "headshots": n("Headshots"),
-        "win_rate": n("WinRate"),
+        "name": settings.APP_NAME,
+        "status": "online",
+        "docs": "/docs",
+        "telegram_webhook": "/telegram/webhook"
     }
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        """🎮 أهلاً بك في PUBG AI Analyzer
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    telegram_app = build_telegram_app()
 
-أرسل إحصائياتك بهذا الشكل:
-KD 3.2 Damage 650 Accuracy 28 Survival 18 Headshots 15 WinRate 22
-
-أو أرسل Screenshot لنتائج PUBG وسأحللها لك تلقائيًا.
-
-الأوامر:
-/analyze
-/compare
-/leaderboard
-/upgrade
-/tip
-"""
-    )
-
-
-async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "أرسل Screenshot أو اكتب الإحصائيات وسأحللها لك 🔥"
-    )
-
-
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-
-    if text.upper().startswith("UPGRADE"):
-        parts = text.split(maxsplit=3)
-        plan = parts[1].lower() if len(parts) > 1 else "pro"
-        contact = parts[2] if len(parts) > 2 else str(update.effective_user.id)
-        note = parts[3] if len(parts) > 3 else ""
-
-        await update.message.reply_text(
-            f"""✅ تم استلام طلب الترقية اليدوي
-
-الخطة: {plan}
-التواصل: {contact}
-الملاحظة: {note}
-
-سيراجعه المدير ويفعل الاشتراك."""
+    if not telegram_app:
+        raise HTTPException(
+            status_code=500,
+            detail="Telegram bot token is missing"
         )
-        return
 
-    stats = parse_text_stats(text)
-    result = analyze_player(stats)
+    data = await request.json()
+    update = Update.de_json(data, telegram_app.bot)
 
-    await update.message.reply_text(
-        f"{result['title']}\n\n{result['report']}"
-    )
+    await telegram_app.process_update(update)
 
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-
-    local = f"/tmp/{photo.file_id}.jpg"
-    await file.download_to_drive(local)
-
-    text = extract_text_from_image(local)
-    stats = parse_pubg_stats(text)
-    result = analyze_player(stats)
-
-    await update.message.reply_text(
-        f"📸 تم تحليل الصورة\n\n{result['title']}\n\n{result['report']}"
-    )
+    return {"ok": True}
 
 
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏆 ميزة الترتيب مفعلة داخل API وسيتم ربطها بالبوت في الخطوة التالية."
-    )
-
-
-async def upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        """💎 الاشتراك اليدوي متاح الآن
-
-الخطط:
-Free: 5 تحليلات يوميًا
-Pro: تحليلات أكثر وتقارير أعمق
-Premium: مقارنة + Ranking + API
-
-للحجز/الترقية اكتب:
-UPGRADE Pro 777000000 تم التحويل باسم أحمد
-"""
-    )
-
-
-async def compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "للمقارنة أرسل بيانات اللاعب الأول والثاني. سيتم تطوير هذه الميزة في البوت بعد تشغيل Webhook."
-    )
-
-
-async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from app.services.tips import random_tip
-
-    t = random_tip()
-    await update.message.reply_text(
-        f"💡 {t['title']}\n\n{t['body']}"
-    )
-
-
-def build_telegram_app():
-    global telegram_app
-
-    if telegram_app is not None:
-        return telegram_app
-
-    if not settings.TELEGRAM_BOT_TOKEN:
-        return None
-
-    telegram_app = Application.builder().token(
-        settings.TELEGRAM_BOT_TOKEN
-    ).build()
-
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("analyze", analyze))
-    telegram_app.add_handler(CommandHandler("leaderboard", leaderboard))
-    telegram_app.add_handler(CommandHandler("upgrade", upgrade))
-    telegram_app.add_handler(CommandHandler("compare", compare))
-    telegram_app.add_handler(CommandHandler("tip", tip))
-
-    telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    return telegram_app
+app.include_router(auth.router)
+app.include_router(analysis.router)
+app.include_router(admin.router)
+app.include_router(leaderboard.router)
+app.include_router(upgrade.router)
+app.include_router(features.router)
